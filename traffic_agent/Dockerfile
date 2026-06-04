@@ -1,22 +1,24 @@
-FROM certcc/silklive:latest
+FROM python:3.10-slim
+
+# Instala a biblioteca nativa do Linux (libpcap) que o Scapy precisa para capturar pacotes
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpcap-dev \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
 
 # Define o diretório de trabalho interno
 WORKDIR /app
 
-# Instala o gerenciador de pacotes do Python e as dependências do modelo
-RUN apt-get update && apt-get install -y python3-pip && \
-    pip3 install --no-cache-dir numpy requests joblib scikit-learn
+# Copia e instala as dependências do Python (incluindo o Scapy agora)
+COPY requirements.txt /app/requirements.txt
+RUN pip3 install --no-cache-dir -r requirements.txt
 
-# Copia o agente de rede refatorado e o scaler gerado no treino
+# Copia o agente de rede e o scaler
 COPY traffic_agent.py /app/traffic_agent.py
 COPY minmax_scaler.pkl /app/minmax_scaler.pkl
 
 # Garante permissões de execução no agente Python
 RUN chmod +x /app/traffic_agent.py
 
-# Variável de ambiente padrão para a interface de rede (pode ser sobrescrita no compose)
-ENV INTERFACE=wlp2s0
-
-# Inicializa o YAF em background (&) e passa o fluxo em tempo real para o Super Mediator + Python
-CMD yaf --in $INTERFACE --live pcap --out 127.0.0.1 --ipfix tcp --ipfix-port 9999 --biflow --max-payload 2048 & \
-    super_mediator --ipfix-port 9999 --out - --format JSON | python3 /app/traffic_agent.py
+# Executa diretamente o script Python, sem YAF ou pipes intermediários
+CMD ["python3", "/app/traffic_agent.py"]

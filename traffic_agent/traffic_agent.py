@@ -3,23 +3,47 @@ import pickle
 import threading
 import numpy as np
 from scapy.all import sniff, IP, TCP, UDP, ICMP, DNS
+import requests
+
+API_URL = "https://sotomaior-early-exit-nids-api.hf.space/predict"
 
 # ==========================================
 # CONFIGURAÇÕES E ORDEM ESTRETA DAS FEATURES
 # ==========================================
 CARACTERISTICAS_MODELO = [
-    'PROTOCOL', 'IN_BYTES', 'IN_PKTS', 'OUT_BYTES', 'OUT_PKTS',
-    'FLOW_DURATION_MILLISECONDS', 'DURATION_IN', 'DURATION_OUT', 'LONGEST_FLOW_PKT',
-    'MAX_IP_PKT_LEN', 'RETRANSMITTED_IN_BYTES', 'RETRANSMITTED_IN_PKTS',
-    'RETRANSMITTED_OUT_BYTES', 'RETRANSMITTED_OUT_PKTS',
-    'SRC_TO_DST_AVG_THROUGHPUT', 'DST_TO_SRC_AVG_THROUGHPUT',
-    'NUM_PKTS_UP_TO_128_BYTES', 'NUM_PKTS_128_TO_256_BYTES',
-    'NUM_PKTS_256_TO_512_BYTES', 'NUM_PKTS_512_TO_1024_BYTES',
-    'NUM_PKTS_1024_TO_1514_BYTES', 'ICMP_TYPE', 'ICMP_IPV4_TYPE', 'DNS_QUERY_TYPE',
-    'SRC_TO_DST_IAT_MIN', 'SRC_TO_DST_IAT_MAX', 'SRC_TO_DST_IAT_AVG',
-    'SRC_TO_DST_IAT_STDDEV', 'DST_TO_SRC_IAT_MIN', 'DST_TO_SRC_IAT_MAX',
-    'DST_TO_SRC_IAT_AVG', 'DST_TO_SRC_IAT_STDDEV'
-]
+                            'PROTOCOL',
+                            'IN_BYTES',
+                            'IN_PKTS',
+                            'OUT_BYTES',
+                            'OUT_PKTS',
+                            'FLOW_DURATION_MILLISECONDS',
+                            'DURATION_IN',
+                            'DURATION_OUT',
+                            'LONGEST_FLOW_PKT',
+                            'MAX_IP_PKT_LEN',
+                            'RETRANSMITTED_IN_BYTES',
+                            'RETRANSMITTED_IN_PKTS',
+                            'RETRANSMITTED_OUT_BYTES',
+                            'RETRANSMITTED_OUT_PKTS',
+                            'SRC_TO_DST_AVG_THROUGHPUT',
+                            'DST_TO_SRC_AVG_THROUGHPUT',
+                            'NUM_PKTS_UP_TO_128_BYTES',
+                            'NUM_PKTS_128_TO_256_BYTES',
+                            'NUM_PKTS_256_TO_512_BYTES',
+                            'NUM_PKTS_512_TO_1024_BYTES',
+                            'NUM_PKTS_1024_TO_1514_BYTES',
+                            'ICMP_TYPE',
+                            'ICMP_IPV4_TYPE',
+                            'DNS_QUERY_TYPE',
+                            'SRC_TO_DST_IAT_MIN',
+                            'SRC_TO_DST_IAT_MAX',
+                            'SRC_TO_DST_IAT_AVG',
+                            'SRC_TO_DST_IAT_STDDEV',
+                            'DST_TO_SRC_IAT_MIN',
+                            'DST_TO_SRC_IAT_MAX',
+                            'DST_TO_SRC_IAT_AVG',
+                            'DST_TO_SRC_IAT_STDDEV',
+                        ]
 
 # Cache global de fluxos ativos em memória
 fluxos_ativos = {}
@@ -218,7 +242,7 @@ def processar_pacote(pkt):
 
 
 def enviar_para_inferencia(chave_fluxo):
-    """Exporta, normaliza e submete o vetor de características ao Modelo Inteligente."""
+    """Exporta, normaliza e submete o vetor de características ao Modelo Inteligente no Hugging Face."""
     with LOCK_FLUXOS:
         fluxo = fluxos_ativos.pop(chave_fluxo, None)
         
@@ -231,13 +255,46 @@ def enviar_para_inferencia(chave_fluxo):
         if scaler:
             dados_input = scaler.transform(dados_input)
             
-        # =================================================================
-        # EXEMPLO DE DISPARO DE INFERÊNCIA (Substitua pela chamada da sua API)
-        # =================================================================
         print(f"\n[*] Fluxo Detectado: {fluxo.src_ip}:{fluxo.sport} -> {fluxo.dst_ip}:{fluxo.dport} | Total Pkts: {fluxo.in_pkts + fluxo.out_pkts}")
-        print(f"[#] Vetor de Entrada pronto (32 Features): {list(np.round(dados_input[0], 4))}")
-        # predicao = modelo.predict(dados_input)
-        # print(f"[RESULTADO NIDS] Predição: {predicao}")
+        
+        # 1. Converter o vetor NumPy para uma lista Python nativa (necessário para o JSON)
+        vetor_lista = dados_input[0].tolist()
+        
+        # 2. Montar o payload conforme o formato esperado pelo seu backend FastAPI
+        payload = {
+            "features": vetor_lista
+        }
+            
+        # 3. Disparar a requisição HTTP POST para o Hugging Face Space
+        try:
+            # Definimos um timeout curto (ex: 3s) para o agente não travar se a API demorar
+            response = requests.post(API_URL, json=payload, timeout=3)
+            
+            if response.status_code == 200:
+                resultado = response.json()
+                
+                # Extraindo os metadados científicos retornados pela sua API (Early Exit e Rejeição)
+                predicao = resultado.get("prediction", "Desconhecido")
+                ramo_exit = resultado.get("exit_branch", "Final")
+                confianca = resultado.get("confidence", 0.0)
+                
+                # Formatação visual dos alertas no terminal do NIDS
+                if "Ataque" in predicao or "Suspeito" in predicao:
+                    status_prefix = "[ALERTA DE INTRUSÃO]"
+                elif "Rejeitado" in predicao:
+                    status_prefix = "[TRÁFEGO INCERTO / REJEITADO]"
+                else:
+                    status_prefix = "[BENIGNO]"
+                    
+                print(f"{status_prefix} Classificação: {predicao} | Ramo Utilizado: Ramo {ramo_exit} | Confiança: {confianca:.2%}")
+                
+            else:
+                print(f"[-] Erro na API Hugging Face (Status {response.status_code}): {response.text}")
+                
+        except requests.exceptions.Timeout:
+            print("[-] Timeout atingido! A API do Hugging Face demorou demais para responder.")
+        except requests.exceptions.RequestException as e:
+            print(f"[-] Falha crítica na comunicação com a API de inferência: {e}")
 
 
 def monitor_de_expiracao():
@@ -260,7 +317,9 @@ def monitor_de_expiracao():
 # INICIALIZAÇÃO DO AGENTE DE REDE
 # ==========================================
 if __name__ == "__main__":
-    print("[*] Iniciando Coletor Stateful baseado em Scapy Nativo...")
+    import os
+    interface_alvo = os.getenv("INTERFACE", "wlp2s0")
+    print(f"[*] Iniciando Coletor Stateful baseado em Scapy Nativo na interface {interface_alvo}...")
     
     # Ativa o coletor periódico em background de fluxos inativos
     thread_garbage_collector = threading.Thread(target=monitor_de_expiracao, daemon=True)
@@ -269,4 +328,4 @@ if __name__ == "__main__":
     print("[*] Aguardando e capturando pacotes em modo promíscuo... Pressione Ctrl+C para encerrar.")
     # sniff() captura pacotes continuamente. 
     # store=0 impede acúmulo de pacotes na RAM física da máquina, vital para longa execução.
-    sniff(filter="ip", prn=processar_pacote, store=0)
+    sniff(iface=interface_alvo, filter="ip", prn=processar_pacote, store=0)
