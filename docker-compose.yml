@@ -1,0 +1,11 @@
+version: '3.8'
+
+services:
+  nids-collector:
+    build: ./traffic_agent
+    container_name: nids_early_exit_agent
+    restart: always
+    ports:
+      - "2055:2055/udp"
+    environment:
+      - PYTHONUNBUFFERED=1
