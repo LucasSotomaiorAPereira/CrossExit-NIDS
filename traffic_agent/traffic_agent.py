@@ -64,19 +64,79 @@ def carregar_scaler(caminho_scaler="minmax_scaler.pkl"):
         print(f"    Garanta que ele foi colocado no mesmo diretório do script. Detalhes: {e}")
         sys.exit(1)
 
+MAP_PROTOCOLOS = {
+    'HOPOPT': 0, 'ICMP': 1, 'IGMP': 2, 'GGP': 3, 'IPv4': 4, 'ST': 5, 'TCP': 6, 'CBT': 7, 'EGP': 8, 'IGP': 9,
+    'BBN-RCC-MON': 10, 'NVP-II': 11, 'PUP': 12, 'ARGUS': 13, 'EMCON': 14, 'XNET': 15, 'CHAOS': 16, 'UDP': 17,
+    'MUX': 18, 'DCN-MEAS': 19, 'HMP': 20, 'PRM': 21, 'XNS-IDP': 22, 'TRUNK-1': 23, 'TRUNK-2': 24, 'LEAF-1': 25,
+    'LEAF-2': 26, 'RDP': 27, 'IRTP': 28, 'ISO-TP4': 29, 'NETBLT': 30, 'MFE-NSP': 31, 'MERIT-INP': 32, 'DCCP': 33,
+    '3PC': 34, 'IDPR': 35, 'XTP': 36, 'DDP': 37, 'IDPR-CMTP': 38, 'TP++': 39, 'IL': 40, 'IPv6': 41, 'SDRP': 42,
+    'IPv6-Route': 43, 'IPv6-Frag': 44, 'IDRP': 45, 'RSVP': 46, 'GRE': 47, 'DSR': 48, 'BNA': 49, 'ESP': 50,
+    'AH': 51, 'I-NLSP': 52, 'SWIPE': 53, 'NARP': 54, 'MOBILE': 55, 'TLSP': 56, 'SKIP': 57, 'IPv6-ICMP': 58,
+    'IPv6-NoNxt': 59, 'IPv6-Opts': 60, 'CFTP': 62, 'SAT-EXPAK': 64, 'KRYPTOLAN': 65, 'RVD': 66, 'IPPC': 67,
+    'SAT-MON': 69, 'VISA': 70, 'IPCV': 71, 'CPNX': 72, 'CPHB': 73, 'WSN': 74, 'PVP': 75, 'BR-SAT-MON': 76,
+    'SUN-ND': 77, 'WB-MON': 78, 'WB-EXPAK': 79, 'ISO-IP': 80, 'VMTP': 81, 'SECURE-VMTP': 82, 'VINES': 83,
+    'TTP': 84, 'IPTM': 84, 'NSFNET-IGP': 85, 'DGP': 86, 'TCF': 87, 'OSPF': 89, 'Sprite-RPC': 90, 'LARP': 91,
+    'MTP': 92, 'AX.25': 93, 'IPIP': 94, 'MICP': 95, 'SCC-SP': 96, 'ETHERIP': 97, 'ENCAP': 98, 'GMTP': 100,
+    'IFMP': 101, 'PNNI': 102, 'PIM': 103, 'ARIS': 104, 'SCPS': 105, 'QNX': 106, 'A/N': 107, 'IPComp': 108,
+    'SNP': 109, 'Compaq-Peer': 110, 'IPX-in-IP': 111, 'VRRP': 112, 'PGM': 113, 'L2TP': 115, 'DDX': 116,
+    'IATP': 117, 'STP': 118, 'SRP': 119, 'UTI': 120, 'SMP': 121, 'SM': 122, 'PTP': 123, 'ISIS over IPv4': 124,
+    'FIRE': 125, 'CRTP': 126, 'CRUDP': 127, 'SSCOPMCE': 128, 'IPLT': 129, 'SPS': 130, 'PIPE': 131, 'SCTP': 132,
+    'FC': 133, 'RSVP-E2E-IGNORE': 134, 'Mobility Header': 135, 'UDPLite': 136, 'MPLS-in-IP': 137, 'manet': 138,
+    'HIP': 139, 'Shim6': 140, 'WESP': 141, 'ROHC': 142, 'Ethernet': 143
+}
+
+def converter_protocolo(valor):
+    if isinstance(valor, (int, float)):
+        return int(valor)
+    if isinstance(valor, str):
+        if valor.isdigit():
+            return int(valor)
+        return MAP_PROTOCOLOS.get(valor.upper(), 0)
+    return 0
+
 def mapear_e_filtrar_json(fluxo_bruto):
     """
     Consome o JSON bruto do GoFlow, traduz as métricas de rede para as chaves do modelo
     e monta o vetor numérico na ordem exata de entrada da rede neural.
     """
+    # Normalização de chaves: garante suporte a JSON gerado tanto em snake_case quanto em CamelCase
+    fluxo = {}
+    mapeamento_chaves = {
+        'proto': 'Proto',
+        'bytes': 'Bytes',
+        'packets': 'Packets',
+        'etype': 'Etype',
+        'time_flow_start': 'TimeFlowStart',
+        'time_flow_end': 'TimeFlowEnd',
+        'time_flow_start_ms': 'TimeFlowStartMs',
+        'time_flow_end_ms': 'TimeFlowEndMs',
+        'time_flow_start_ns': 'TimeFlowStartNs',
+        'time_flow_end_ns': 'TimeFlowEndNs',
+        'icmp_type': 'IcmpType',
+        'icmp_code': 'IcmpCode',
+        'src_addr': 'SrcAddr',
+        'dst_addr': 'DstAddr',
+        'src_port': 'SrcPort',
+        'dst_port': 'DstPort'
+    }
+    for k, v in fluxo_bruto.items():
+        if k in mapeamento_chaves:
+            fluxo[mapeamento_chaves[k]] = v
+        else:
+            fluxo[k] = v
+
     # Cria uma cópia normalizada dos dados recebidos
     dados_normalizados = {}
     
     # 1. Realiza o mapeamento direto das chaves suportadas nativamente pelo GoFlow
-    for chave_goflow, valor in fluxo_bruto.items():
+    for chave_goflow, valor in fluxo.items():
         if chave_goflow in MAPEAMENTO_GOFLOW:
             chave_modelo = MAPEAMENTO_GOFLOW[chave_goflow]
             dados_normalizados[chave_modelo] = valor
+
+    # Tratamento específico para o protocolo: converte strings ("TCP", "UDP") para seus IDs numéricos IANA
+    protocolo_bruto = dados_normalizados.get('PROTOCOL', 0)
+    dados_normalizados['PROTOCOL'] = converter_protocolo(protocolo_bruto)
 
     # 2. Lógica de preenchimento complementar / Simulação de tráfego bidirecional
     # Como o GoFlow extrai dados unidirecionais por padrão, normalizamos o tráfego 
@@ -87,12 +147,17 @@ def mapear_e_filtrar_json(fluxo_bruto):
         dados_normalizados['OUT_PKTS'] = int(dados_normalizados['IN_PKTS'] * 0.10)
         
     # Tratamento para durações de fluxos
-    time_start = fluxo_bruto.get('TimeFlowStart', 0)
-    time_end = fluxo_bruto.get('TimeFlowEnd', 0)
-    time_start_ms = fluxo_bruto.get('TimeFlowStartMs', 0)
-    time_end_ms = fluxo_bruto.get('TimeFlowEndMs', 0)
+    time_start = fluxo.get('TimeFlowStart', 0)
+    time_end = fluxo.get('TimeFlowEnd', 0)
+    time_start_ms = fluxo.get('TimeFlowStartMs', 0)
+    time_end_ms = fluxo.get('TimeFlowEndMs', 0)
+    time_start_ns = fluxo.get('TimeFlowStartNs', 0)
+    time_end_ns = fluxo.get('TimeFlowEndNs', 0)
     
-    if time_start_ms > 0 and time_end_ms > 0:
+    if time_start_ns > 0 and time_end_ns > 0:
+        duration_ms = float(time_end_ns - time_start_ns) / 1000000.0
+        duration_sec = duration_ms / 1000.0
+    elif time_start_ms > 0 and time_end_ms > 0:
         duration_ms = float(time_end_ms - time_start_ms)
         duration_sec = duration_ms / 1000.0
     else:
@@ -146,8 +211,8 @@ def mapear_e_filtrar_json(fluxo_bruto):
             dados_normalizados['NUM_PKTS_1024_TO_1514_BYTES'] = float(in_pkts)
 
     # Tratamento de campos ICMP
-    icmp_type = fluxo_bruto.get('IcmpType', 0)
-    icmp_code = fluxo_bruto.get('IcmpCode', 0)
+    icmp_type = fluxo.get('IcmpType', 0)
+    icmp_code = fluxo.get('IcmpCode', 0)
     dados_normalizados['ICMP_TYPE'] = float((icmp_type * 256) + icmp_code)
     dados_normalizados['ICMP_IPV4_TYPE'] = float(icmp_type)
 
@@ -202,14 +267,14 @@ def enviar_para_api(vetor_normalizado, metadados_fluxo):
             
             # Formatação visual dos logs e alertas locais para o administrador do NIDS
             if classe == "Ataque":
-                print(f"[🚨 ALERTA DE INTRUSÃO] {obter_identidade_fluxo(metadados_fluxo)}")
-                print(f"    Veredito: {classe.upper()} | Confiança: {confianca:.4f} | Ramo: {ramo}\n")
+                print(f"[ALERTA DE INTRUSÃO] {obter_identidade_fluxo(metadados_fluxo)}")
+                print(f"    Veredito: {classe.upper()} | Confiança: {confianca:.4f} | Ramo: {ramo} | Confiança Máxima: {confianca:.4f}\n")
             elif classe == "Rejeitado":
-                print(f"[⚠️ TRÁFEGO SUSPEITO] {obter_identidade_fluxo(metadados_fluxo)}")
+                print(f"[TRÁFEGO SUSPEITO] {obter_identidade_fluxo(metadados_fluxo)}")
                 print(f"    Ação: FLUXO REJEITADO (Incerteza Operacional) | Confiança Máxima: {confianca:.4f}\n")
             else:
                 # Tráfego benigno classificado de forma limpa
-                print(f"[✅ Benigno] {obter_identidade_fluxo(metadados_fluxo)} -> Processado por: {ramo}")
+                print(f"[Benigno] {obter_identidade_fluxo(metadados_fluxo)} -> Processado por: {ramo} | Confiança Máxima: {confianca:.4f}\n")
         else:
             print(f"[-] Erro de comunicação externa: Resposta HTTP {resposta.status_code} recebida do servidor de IA.")
             
@@ -218,10 +283,10 @@ def enviar_para_api(vetor_normalizado, metadados_fluxo):
 
 def obter_identidade_fluxo(fluxo):
     """Extrai informações de endereçamento da camada de rede (IP e Portas) para fins de log local."""
-    src_ip = fluxo.get('SrcAddr', 'Desconhecido')
-    dst_ip = fluxo.get('DstAddr', 'Desconhecido')
-    src_port = fluxo.get('SrcPort', '?')
-    dst_port = fluxo.get('DstPort', '?')
+    src_ip = fluxo.get('SrcAddr') or fluxo.get('src_addr', 'Desconhecido')
+    dst_ip = fluxo.get('DstAddr') or fluxo.get('dst_addr', 'Desconhecido')
+    src_port = fluxo.get('SrcPort') or fluxo.get('src_port', '?')
+    dst_port = fluxo.get('DstPort') or fluxo.get('dst_port', '?')
     return f"{src_ip}:{src_port} -> {dst_ip}:{dst_port}"
 
 def main():
