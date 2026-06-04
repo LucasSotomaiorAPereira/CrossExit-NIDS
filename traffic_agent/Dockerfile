@@ -1,31 +1,22 @@
-# Etapa 1: Obter o binário oficial do goflow2
-FROM netsampler/goflow2:latest AS goflow_base
+FROM certcc/silklive:latest
 
-# Etapa 2: Criar a imagem final com Python
-FROM python:3.10-slim
-
-# Instalar utilitários básicos do sistema
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    procps \
-    && rm -rf /var/lib/apt/lists/*
-
+# Define o diretório de trabalho interno
 WORKDIR /app
 
-# Copiar o binário do goflow2 para o path de execução do sistema
-COPY --from=goflow_base /goflow2 /usr/local/bin/goflow2
+# Instala o gerenciador de pacotes do Python e as dependências do modelo
+RUN apt-get update && apt-get install -y python3-pip && \
+    pip3 install --no-cache-dir numpy requests joblib scikit-learn
 
-# Copiar e instalar as dependências do Python
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Copia o agente de rede refatorado e o scaler gerado no treino
+COPY traffic_agent.py /app/traffic_agent.py
+COPY minmax_scaler.pkl /app/minmax_scaler.pkl
 
-# Copiar o script do agente e o scaler do MinMaxScaler
-COPY traffic_agent.py .
-COPY minmax_scaler.pkl .
+# Garante permissões de execução no agente Python
+RUN chmod +x /app/traffic_agent.py
 
-# Expor a porta UDP padrão para receber tráfego NetFlow v9/IPFIX
-EXPOSE 2055/udp
+# Variável de ambiente padrão para a interface de rede (pode ser sobrescrita no compose)
+ENV INTERFACE=wlp2s0
 
-# Comando Inicial: Executa o goflow2 e canaliza (pipe '|') a saída JSON 
-# em tempo real diretamente para o Standard Input (stdin) do Python.
-# O parâmetro '-u' força o Python a processar as linhas sem buffering.
-CMD ["sh", "-c", "goflow2 -listen netflow://0.0.0.0:2055 -format json | python -u traffic_agent.py"]
+# Inicializa o YAF em background (&) e passa o fluxo em tempo real para o Super Mediator + Python
+CMD yaf --in $INTERFACE --live pcap --out 127.0.0.1 --ipfix tcp --ipfix-port 9999 --biflow --max-payload 2048 & \
+    super_mediator --ipfix-port 9999 --out - --format JSON | python3 /app/traffic_agent.py
