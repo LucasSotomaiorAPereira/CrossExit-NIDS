@@ -4,6 +4,7 @@ import threading
 import numpy as np
 from scapy.all import sniff, IP, TCP, UDP, ICMP, DNS
 import requests
+import joblib
 
 API_URL = "https://sotomaior-early-exit-nids-api.hf.space/predict"
 
@@ -50,10 +51,9 @@ fluxos_ativos = {}
 LOCK_FLUXOS = threading.Lock()
 FLOW_TIMEOUT = 15.0  # Expira fluxos inativos após 15 segundos
 
-# Carrega o Scaler do seu modelo
+# Carrega o Scaler do seu modelo usando joblib
 try:
-    with open('minmax_scaler.pkl', 'rb') as f:
-        scaler = pickle.load(f)
+    scaler = joblib.load('minmax_scaler.pkl')
     print("[+] Scaler 'minmax_scaler.pkl' carregado com sucesso.")
 except Exception as e:
     print(f"[-] Erro ao carregar Scaler: {e}. Usando fallback sem normalização.")
@@ -236,10 +236,6 @@ def processar_pacote(pkt):
             novo_fluxo.atualizar(pkt, direcao_inbound=True)
             fluxos_ativos[chave_direta] = novo_fluxo
 
-    # Se for um encerramento explícito de conexão TCP, podemos forçar uma classificação antecipada
-    # if pkt.haslayer(TCP) and any(f in pkt[TCP].flags for f in ['F', 'R']):
-    #     enviar_para_inferencia(chave_direta if chave_direta in fluxos_ativos else chave_reversa)
-
 
 def enviar_para_inferencia(chave_fluxo):
     """Exporta, normaliza e submete o vetor de características ao Modelo Inteligente no Hugging Face."""
@@ -274,19 +270,19 @@ def enviar_para_inferencia(chave_fluxo):
                 resultado = response.json()
                 
                 # Extraindo os metadados científicos retornados pela sua API (Early Exit e Rejeição)
-                predicao = resultado.get("prediction", "Desconhecido")
-                ramo_exit = resultado.get("exit_branch", "Final")
-                confianca = resultado.get("confidence", 0.0)
+                predicao = resultado.get("classe", "Desconhecido")
+                ramo_exit = resultado.get("ramo_saida", "Desconhecido")
+                confianca = resultado.get("confianca", 0.0)
                 
                 # Formatação visual dos alertas no terminal do NIDS
-                if "Ataque" in predicao or "Suspeito" in predicao:
+                if "Ataque" in predicao:
                     status_prefix = "[ALERTA DE INTRUSÃO]"
-                elif "Rejeitado" in predicao:
-                    status_prefix = "[TRÁFEGO INCERTO / REJEITADO]"
-                else:
+                elif "Normal" in predicao:
                     status_prefix = "[BENIGNO]"
+                else:
+                    status_prefix = "[TRÁFEGO INCERTO / REJEITADO]"
                     
-                print(f"{status_prefix} Classificação: {predicao} | Ramo Utilizado: Ramo {ramo_exit} | Confiança: {confianca:.2%}")
+                print(f"{status_prefix} Classificação: {predicao} | Ramo Utilizado: {ramo_exit} | Confiança: {confianca:.2%}")
                 
             else:
                 print(f"[-] Erro na API Hugging Face (Status {response.status_code}): {response.text}")
@@ -317,9 +313,7 @@ def monitor_de_expiracao():
 # INICIALIZAÇÃO DO AGENTE DE REDE
 # ==========================================
 if __name__ == "__main__":
-    import os
-    interface_alvo = os.getenv("INTERFACE", "wlp2s0")
-    print(f"[*] Iniciando Coletor Stateful baseado em Scapy Nativo na interface {interface_alvo}...")
+    print(f"[*] Iniciando Coletor Stateful baseado em Scapy Nativo")
     
     # Ativa o coletor periódico em background de fluxos inativos
     thread_garbage_collector = threading.Thread(target=monitor_de_expiracao, daemon=True)
@@ -328,4 +322,4 @@ if __name__ == "__main__":
     print("[*] Aguardando e capturando pacotes em modo promíscuo... Pressione Ctrl+C para encerrar.")
     # sniff() captura pacotes continuamente. 
     # store=0 impede acúmulo de pacotes na RAM física da máquina, vital para longa execução.
-    sniff(iface=interface_alvo, filter="ip", prn=processar_pacote, store=0)
+    sniff(filter="ip", prn=processar_pacote, store=0)
