@@ -5,9 +5,9 @@ services:
     restart: always
     network_mode: "host"
     cap_add:
-      - NET_ADMIN  # Permite que o YAF coloque a interface em modo promíscuo
+      - NET_ADMIN 
     environment:
-      - INTERFACE=wlp2s0  # Altere aqui para a interface real da sua máquina (ex: wlan0, enp3s0)
+      - INTERFACE=wlp2s0
     logging:
       driver: "json-file"
       options:
