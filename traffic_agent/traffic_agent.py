@@ -5,7 +5,7 @@ from scapy.all import sniff, IP, TCP, UDP, ICMP, DNS
 import requests
 import joblib
 
-API_URL = "https://sotomaior-early-exit-nids-api.hf.space/predict"
+API_URL = "http://localhost:50668/predict"
 
 # ==========================================
 # CONFIGURAÇÕES E ORDEM ESTRITA DAS FEATURES

@@ -12,3 +12,14 @@ services:
       driver: "json-file"
       options:
         max-size: "10m"
+
+  backend:
+    build: ./backend
+    container_name: nids_backend_api
+    restart: always
+    ports:
+      - "50668:7860"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
