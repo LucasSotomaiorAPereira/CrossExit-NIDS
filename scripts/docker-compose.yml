@@ -1,0 +1,17 @@
+services:
+  cross-exit-nids:
+    build: .
+    container_name: cross_exit-nids_container
+    restart: "no"
+    network_mode: "host"
+    cap_add:
+      - NET_ADMIN
+    volumes:
+      - ./data:/app/data
+    environment:
+      - PCAP_INPUT=/app/data/input.pcap
+      - CSV_OUTPUT=/app/data/output.csv
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
