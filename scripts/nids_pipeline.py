@@ -4,6 +4,7 @@ import glob
 import shutil
 import logging
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 import pandas as pd
 import joblib
@@ -11,16 +12,14 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-# Configuração de logging para monitoramento em tempo real
+# Configuração do logging para monitoramento
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
     handlers=[logging.StreamHandler(sys.stdout)]
 )
 
-# =====================================================================
-# 1. CONFIGURAÇÕES E PARÂMETROS DO NPROBE (Extraídos do Agente)
-# =====================================================================
+# 1. Parâmetros e Configuração do nProbe
 
 NPROBE_FEATURES = [
     "IPV4_SRC_ADDR", "IPV4_DST_ADDR", "L4_SRC_PORT", "L4_DST_PORT", "PROTOCOL", "L7_PROTO",
@@ -57,32 +56,19 @@ def run_nprobe_batch(pcap_path, temp_dump_dir, separator="#"):
         "--csv-separator", separator
     ]
     
-    logging.info(f"Iniciando nProbe para extrair {len(NPROBE_FEATURES)} características...")
     result = subprocess.run(comando, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    
-    if result.stdout:
-        logging.info(f"nProbe stdout: {result.stdout.strip()}")
-    if result.stderr:
-        logging.info(f"nProbe stderr: {result.stderr.strip()}")
     
     if result.returncode != 0:
         error_msg = result.stderr if result.stderr else "Erro desconhecido na execução do nProbe."
         raise RuntimeError(f"Falha na execução do binário nProbe: {error_msg}")
-        
-    logging.info("Processamento do arquivo PCAP pelo nProbe finalizado com sucesso!")
 
 def consolidate_extracted_flows(temp_dump_dir, output_csv_path, separator="#"):
-    for root, dirs, files in os.walk(temp_dump_dir):
-        for f in files:
-            logging.info(f"Arquivo encontrado no dump: {os.path.join(root, f)}")
-
     arquivos_dump = glob.glob(os.path.join(temp_dump_dir, "**", "*"), recursive=True)
     arquivos_dump = [f for f in arquivos_dump if os.path.isfile(f)]
     if not arquivos_dump:
         logging.warning("Nenhum fluxo exportado foi gerado pelo nProbe. O arquivo PCAP pode estar vazio.")
         return pd.DataFrame()
         
-    logging.info(f"Consolidando {len(arquivos_dump)} arquivo(s) temporário(s) de tráfego...")
     lista_dataframes = []
     
     for arquivo in arquivos_dump:
@@ -101,26 +87,82 @@ def consolidate_extracted_flows(temp_dump_dir, output_csv_path, separator="#"):
         
     df_consolidado = pd.concat(lista_dataframes, ignore_index=True)
     df_consolidado.fillna(0, inplace=True)
-    df_consolidado.to_csv(output_csv_path, index=False)
+    if output_csv_path is not None:
+        df_consolidado.to_csv(output_csv_path, index=False)
     
     return df_consolidado
 
+def split_pcap(pcap_file, output_dir, packets_per_file=2000):
+    """Divide o arquivo PCAP em chunks menores via editcap."""
+    os.makedirs(output_dir, exist_ok=True)
+    output_pattern = os.path.join(output_dir, "chunk.pcap")
+
+    comando = [
+        "editcap",
+        "-c", str(packets_per_file),
+        pcap_file,
+        output_pattern,
+    ]
+
+    logging.info(f"Dividindo PCAP em partes de {packets_per_file} pacotes cada...")
+    result = subprocess.run(comando, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+    if result.returncode != 0:
+        error_msg = result.stderr if result.stderr else "Erro desconhecido na execução do editcap."
+        raise RuntimeError(f"Falha ao dividir o PCAP com editcap: {error_msg}")
+
+    chunks = sorted(glob.glob(os.path.join(output_dir, "chunk*.pcap")))
+    logging.info(f"PCAP dividido em {len(chunks)} parte(s).")
+    return chunks
+
+def process_single_chunk(idx, chunk_path, temp_base_dir, total_chunks):
+    logging.info(f"Processando parte {idx + 1}/{total_chunks}")
+    temp_dump_dir = os.path.join(temp_base_dir, f"dump_{idx}")
+    run_nprobe_batch(chunk_path, temp_dump_dir)
+
+    df_chunk = consolidate_extracted_flows(temp_dump_dir, output_csv_path=None)
+    return df_chunk
+
 def extract_pcap_to_netflow(pcap_file, output_csv):
     diretorio_base = os.path.dirname(os.path.abspath(pcap_file))
-    temp_dump_dir = os.path.join(diretorio_base, ".temp_pcap_nprobe")
+    temp_base_dir = os.path.join(diretorio_base, ".temp_pcap_nprobe")
+    temp_split_dir = os.path.join(temp_base_dir, "splits")
     try:
-        run_nprobe_batch(pcap_file, temp_dump_dir)
-        df_final = consolidate_extracted_flows(temp_dump_dir, output_csv)
+        chunks = split_pcap(pcap_file, temp_split_dir)
+
+        lista_dataframes = []
+        num_workers = min(os.cpu_count() or 1, len(chunks))
+        logging.info(f"Iniciando ThreadPoolExecutor com {num_workers} workers para processar {len(chunks)} partes...")
+
+        with ThreadPoolExecutor(max_workers=num_workers) as executor:
+            futures = [
+                executor.submit(process_single_chunk, idx, chunk_path, temp_base_dir, len(chunks))
+                for idx, chunk_path in enumerate(chunks)
+            ]
+            for idx, future in enumerate(futures):
+                try:
+                    df_chunk = future.result()
+                    if df_chunk is not None and not df_chunk.empty:
+                        lista_dataframes.append(df_chunk)
+                except Exception as e:
+                    logging.error(f"Erro ao processar a parte {idx + 1}: {e}")
+
+        if not lista_dataframes:
+            logging.error("Nenhum fluxo válido extraído de nenhuma parte do PCAP.")
+            return pd.DataFrame()
+
+        df_final = pd.concat(lista_dataframes, ignore_index=True)
+        df_final.fillna(0, inplace=True)
+        df_final.to_csv(output_csv, index=False)
+        logging.info(f"Total de {len(df_final)} fluxos consolidados de {len(chunks)} parte(s).")
         return df_final
     finally:
-        if os.path.exists(temp_dump_dir):
+        if os.path.exists(temp_base_dir):
             logging.info("Limpando arquivos temporários do nProbe...")
-            shutil.rmtree(temp_dump_dir)
+            shutil.rmtree(temp_base_dir)
 
 
-# =====================================================================
-# 2. DEFINIÇÃO DA ARQUITETURA E INFERÊNCIA DO MODELO (Extraídos do Backend)
-# =====================================================================
+# 2. Definição da Arquitetura e Inferência do Modelo
 
 INPUT_DIM = 32
 
@@ -226,26 +268,24 @@ def inferencia(model, x, device, params=None):
         }
 
 
-# =====================================================================
-# 3. ORQUESTRAÇÃO E EXECUÇÃO DO PIPELINE
-# =====================================================================
+# 3. Orquestração e Execução do Pipeline
 
 def main():
     if len(sys.argv) < 3:
-        print("Uso correto: python3 nids_pipeline.py <arquivo_entrada.pcap> <arquivo_saida_relatorio.csv>")
+        print("Uso correto: python3 nids_pipeline.py <arquivo_entrada.pcap> <arquivo_saida.csv>")
         sys.exit(1)
         
     pcap_input = sys.argv[1]
     csv_output = sys.argv[2]
     
-    # Passo 1: Extração de fluxos NetFlow v9 via nProbe
+    # Passo 1: Extração NetFlow via nProbe
     df_flows = extract_pcap_to_netflow(pcap_input, csv_output)
     
     if df_flows is None or df_flows.empty:
         logging.error("Nenhum fluxo extraído do PCAP. Pipeline abortado.")
         sys.exit(1)
         
-    # Passo 2: Selecionar e reordenar as 32 features na ORDEM EXATA do treinamento do modelo
+    # Passo 2: Seleção e ordenação das features para o modelo
     CARACTERISTICAS_MODELO = [
                                 'PROTOCOL',
                                 'IN_BYTES',
@@ -283,36 +323,38 @@ def main():
     
     df_features = df_flows[CARACTERISTICAS_MODELO]
     
-    # Passo 3: Inicialização e Carga dos Artefatos de IA (Model & Scaler)
+    # Passo 3: Carregamento do modelo e do scaler
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    model_path = os.path.join(script_dir, "models", "model.pth")
+    scaler_path = os.path.join(script_dir, "models", "minmax_scaler.pkl")
+
     model = IDSBranchyNet()
-    if os.path.exists("model.pth"):
-        model.load_state_dict(torch.load("model.pth", map_location=device))
-        logging.info("Pesos do modelo 'model.pth' carregados com sucesso.")
+    if os.path.exists(model_path):
+        model.load_state_dict(torch.load(model_path, map_location=device))
+        logging.info("Pesos do modelo carregados com sucesso.")
     else:
-        logging.error("Erro: O arquivo de pesos 'model.pth' não foi encontrado no diretório atual.")
+        logging.error(f"Erro: O arquivo de pesos não foi encontrado em: {model_path}")
         sys.exit(1)
     model.to(device)
     
-    if os.path.exists("minmax_scaler.pkl"):
-        loaded_scaler = joblib.load("minmax_scaler.pkl")
-        logging.info("Normalizador 'minmax_scaler.pkl' carregado com sucesso.")
+    if os.path.exists(scaler_path):
+        loaded_scaler = joblib.load(scaler_path)
+        logging.info("Normalizador carregado com sucesso.")
     else:
-        logging.error("Erro: O arquivo do scaler 'minmax_scaler.pkl' não foi encontrado no diretório atual.")
+        logging.error(f"Erro: O arquivo do scaler não foi encontrado em: {scaler_path}")
         sys.exit(1)
 
-    # Passo 4: Pré-processamento e Inferência em Lote
+    # Passo 4: Pré-processamento e inferência
     X = df_features.values
 
     X_df = pd.DataFrame(X, columns=CARACTERISTICAS_MODELO)
 
-    # Verificar se há infinitos
     if np.isinf(X_df.values).any():
         X_df.replace([np.inf, -np.inf], np.nan, inplace=True)
         X_df.fillna(0, inplace=True)
 
-    # Clipar ao range do scaler para evitar extrapolação
     X_scaled = loaded_scaler.transform(X_df.values)
     X_scaled = np.clip(X_scaled, 0, 1)
 
@@ -326,14 +368,30 @@ def main():
         params=melhores_params
     )
 
-    # Passo 5: Atualização do relatório final com os resultados obtidos da IA
+    # Passo 5: Atualização do relatório com predições
     df_flows['PREDICAO_CLASSE'] = resultado['predicoes']
     df_flows['GRAU_CONFIANCA'] = resultado['confiancas']
     df_flows['ROTA_SAIDA_EXIT'] = resultado['rota_saida']
     
-    # Reescreve o CSV de saída adicionando as colunas calculadas de predição
     df_flows.to_csv(csv_output, index=False)
     logging.info(f"Pipeline concluído com sucesso! Resultados salvos em: {csv_output}")
+
+    # Impressão das métricas de classificação
+    preds = resultado['predicoes']
+    exits = resultado['rota_saida']
+    
+    rejeitados = np.sum(exits == -1)
+    benignos_saida1 = np.sum((preds == 0) & (exits == 1))
+    benignos_saida2 = np.sum((preds == 0) & (exits == 2))
+    ataques_saida1 = np.sum((preds == 1) & (exits == 1))
+    ataques_saida2 = np.sum((preds == 1) & (exits == 2))
+
+    logging.info("Métricas de Classificação")
+    logging.info(f"Fluxos rejeitados: {rejeitados}")
+    logging.info(f"Fluxos benignos na Saída 1: {benignos_saida1}")
+    logging.info(f"Fluxos benignos na Saída 2: {benignos_saida2}")
+    logging.info(f"Ataques na Saída 1: {ataques_saida1}")
+    logging.info(f"Ataques na Saída 2: {ataques_saida2}")
 
 if __name__ == "__main__":
     main()

@@ -7,6 +7,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     lsb-release \
     gnupg \
     whiptail \
+    wireshark-common \
     && rm -rf /var/lib/apt/lists/*
 
 RUN wget https://packages.ntop.org/apt/bookworm/all/apt-ntop.deb \
@@ -30,8 +31,7 @@ RUN pip install --no-cache-dir \
     requests==2.31.0
 
 COPY nids_pipeline.py /app/nids_pipeline.py
-COPY model.pth /app/model.pth
-COPY minmax_scaler.pkl /app/minmax_scaler.pkl
+COPY models /app/models
 
 RUN chmod +x /app/nids_pipeline.py
 
