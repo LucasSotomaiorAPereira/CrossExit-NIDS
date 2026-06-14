@@ -1,32 +1,51 @@
-# Projeto CrossExit-NIDS
+# CrossExit-NIDS
 
 A ferramenta CrossExit-NIDS foi desenvolvida com um pipeline de classificação para fluxos de tráfego de rede (PCAP) utilizando a arquitetura de rede neural com saídas antecipadas (Early Exits) e extração de características em tempo real com nProbe de forma paralela.
 
 
 ## Requisitos
 
-Para instalar e executar este projeto, é necessário ter o Docker instalado na máquina. Os pacotes Python necessários estão listados no arquivo `scripts/Dockerfile`.
+### Clonando o Repositório
 
-### Instalando o Docker
-1. Siga as instruções para instalar o Docker na sua máquina a partir do [site oficial do Docker](https://docs.docker.com/get-docker/).
+Primeiramente, clone o repositório em sua máquina local:
 
-2. Adicione seu usuário ao grupo Docker para evitar a necessidade de permissões root:
+```sh
+git clone https://github.com/LucasSotomaiorAPereira/CrossExit-NIDS.git
+cd CrossExit-NIDS
+```
+
+### Docker e Dependências
+
+Para executar este projeto, o Docker e o Docker Compose são as únicas dependências necessárias em sua máquina local. Todas as demais dependências (como os pacotes Python listados no `scripts/Dockerfile`) são configuradas e executadas de forma isolada dentro dos containers.
+
+#### Instalando o Docker e Docker Compose
+
+##### Linux (Ubuntu/Debian)
+1. Instale o Docker e o Docker Compose seguindo as instruções no [site oficial do Docker](https://docs.docker.com/get-docker/).
+2. Adicione seu usuário ao grupo Docker para evitar a necessidade de permissões de root/sudo ao rodar comandos docker:
     ```sh
     sudo usermod -aG docker $USER
     ```
-
 3. Faça logout e login novamente, ou reinicie o sistema, para que as alterações tenham efeito.
 
-4. Verifique a instalação do Docker com o comando:
-    ```sh
-    docker --version
-    ```
+##### Windows e macOS
+1. Instale o [Docker Desktop](https://www.docker.com/products/docker-desktop/), que já inclui o Docker Compose integrado.
+2. No Windows, recomenda-se utilizar a integração com o WSL 2 (Windows Subsystem for Linux) para melhor performance.
+3. Não há necessidade de configurar grupos ou permissões adicionais após a instalação típica do Docker Desktop.
 
-5. Construa a imagem local necessária para a análise:
-    ```sh
-    cd scripts
-    docker compose build
-    ```
+##### Validando a Instalação (Qualquer SO)
+Execute o comando abaixo no seu terminal (WSL, Terminal do macOS ou PowerShell/CMD no Windows) para verificar a instalação:
+```sh
+docker --version
+docker compose version
+```
+
+##### Construindo a Imagem
+Acesse o diretório `./scripts` e construa a imagem local necessária para a análise:
+```sh
+cd scripts
+docker compose build
+```
 
 ### Outras dependências
 
