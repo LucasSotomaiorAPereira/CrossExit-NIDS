@@ -80,22 +80,36 @@ Ao final do processamento, o terminal exibirá um log semelhante a este:
 
 ```text
 [INFO] Dividindo PCAP em partes de 2000 pacotes cada...
-[INFO] PCAP dividido em 2 parte(s).
-[INFO] Iniciando ThreadPoolExecutor com 2 workers para processar 2 partes...
-[INFO] Processando parte 1/2
-[INFO] Processando parte 2/2
-[INFO] Total de 363 fluxos consolidados de 2 parte(s).
+[INFO] PCAP dividido em 16 parte(s).
+[INFO] Iniciando ThreadPoolExecutor com 8 workers para processar 16 partes...
+[INFO] Processando parte 1/16
+[INFO] Processando parte 2/16
+[INFO] Processando parte 3/16
+[INFO] Processando parte 4/16
+[INFO] Processando parte 5/16
+[INFO] Processando parte 6/16
+[INFO] Processando parte 7/16
+[INFO] Processando parte 8/16
+[INFO] Processando parte 9/16
+[INFO] Processando parte 10/16
+[INFO] Processando parte 11/16
+[INFO] Processando parte 12/16
+[INFO] Processando parte 13/16
+[INFO] Processando parte 14/16
+[INFO] Processando parte 15/16
+[INFO] Processando parte 16/16
+[INFO] Total de 391 fluxos consolidados de 16 parte(s).
 [INFO] Limpando arquivos temporários do nProbe...
 [INFO] Pesos do modelo carregados com sucesso.
 [INFO] Normalizador carregado com sucesso.
-[INFO] Executando inferência em lote para 363 fluxos extraídos...
+[INFO] Executando inferência em lote para 391 fluxos extraídos...
 [INFO] Pipeline concluído com sucesso! Resultados salvos em: /app/data/output.csv
 [INFO] Métricas de Classificação
-[INFO] Fluxos rejeitados: 215
-[INFO] Fluxos benignos na Saída 1: 0
-[INFO] Fluxos benignos na Saída 2: 1
-[INFO] Ataques na Saída 1: 10
-[INFO] Ataques na Saída 2: 137
+[INFO] Fluxos rejeitados: 119
+[INFO] Fluxos benignos na Saída 1: 17
+[INFO] Fluxos benignos na Saída 2: 141
+[INFO] Ataques na Saída 1: 16
+[INFO] Ataques na Saída 2: 98
 ```
 
 O arquivo final `output.csv` estará disponível em `scripts/data/output.csv` no sistema de arquivos local.
