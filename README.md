@@ -82,24 +82,24 @@ cross-exit-nids
 Ao final do processamento, o terminal exibirá um log semelhante a este:
 
 ```text
-Dividindo PCAP em partes de 2000 pacotes cada...
-PCAP dividido em 1758 parte(s).
-Iniciando ThreadPoolExecutor com 8 workers para processar 1758 partes...
-Processando parte 1/1758
-Processando parte 2/1758
+[INFO] Dividindo PCAP em partes de 2000 pacotes cada...
+[INFO] PCAP dividido em 1758 parte(s).
+[INFO] Iniciando ThreadPoolExecutor com 8 workers para processar 1758 partes...
+[INFO] Processando parte 1/1758
+[INFO] Processando parte 2/1758
 ...
-Processando parte 1758/1758
-Total de 63548 fluxos consolidados de 1758 parte(s).
-Limpando arquivos temporários do nProbe...
-Pesos do modelo carregados com sucesso.
-Normalizador carregado com sucesso.
-Executando inferência em lote para 63548 fluxos extraídos...
-Pipeline concluído com sucesso! Resultados salvos em: /app/data/output.csv
-Métricas de Classificação
-Fluxos rejeitados: 16891
-Fluxos benignos na Saída 1: 12
-Fluxos benignos na Saída 2: 7846
-Ataques na Saída 1: 23043
+[INFO] Processando parte 1758/1758
+[INFO] Total de 63548 fluxos consolidados de 1758 parte(s).
+[INFO] Limpando arquivos temporários do nProbe...
+[INFO] Pesos do modelo carregados com sucesso.
+[INFO] Normalizador carregado com sucesso.
+[INFO] Executando inferência em lote para 63548 fluxos extraídos...
+[INFO] Pipeline concluído com sucesso! Resultados salvos em: /app/data/output.csv
+[INFO] Métricas de Classificação
+[INFO] Fluxos rejeitados: 16891
+[INFO] Fluxos benignos na Saída 1: 12
+[INFO] Fluxos benignos na Saída 2: 7846
+[INFO] Ataques na Saída 1: 23043
 [INFO] Ataques na Saída 2: 15756
 ```
 
