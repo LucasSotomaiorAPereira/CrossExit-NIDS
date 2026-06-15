@@ -65,13 +65,16 @@ Para o correto funcionamento dessa ferramenta, os seguintes arquivos devem estar
 - **Função:** Diretório com todos os arquivos fontes, configurações do Docker Compose e Dockerfile correspondente.
 
 ## Executando a Aplicação
-A execução da aplicação pode ser feita de forma simples através do Docker Compose, passando os caminhos do PCAP de entrada e do CSV de saída. Por exemplo, consideremos o arquivo `./scripts/data/input.pcap` e o arquivo de saída `./scripts/data/output.csv`.
+A execução da aplicação pode ser feita de forma simples através do Docker Compose, passando os caminhos do PCAP de entrada e do CSV de saída. Por exemplo, consideremos o arquivo `./scripts/data/input_UNSW-NB15.pcap` e o arquivo de saída `./scripts/data/output.csv`.
 
 Acesse o diretório `./scripts` e execute o comando:
 
 ```sh
 # para processar a captura e gerar o relatório final consolidado
-docker compose run --rm -e PCAP_INPUT=/app/data/input.pcap -e CSV_OUTPUT=/app/data/output.csv cross-exit-nids
+docker compose run --rm \
+-e PCAP_INPUT=/app/data/input_UNSW-NB15.pcap \
+-e CSV_OUTPUT=/app/data/output.csv \
+cross-exit-nids
 ```
 
 ### Saída Esperada
@@ -80,36 +83,24 @@ Ao final do processamento, o terminal exibirá um log semelhante a este:
 
 ```text
 [INFO] Dividindo PCAP em partes de 2000 pacotes cada...
-[INFO] PCAP dividido em 16 parte(s).
-[INFO] Iniciando ThreadPoolExecutor com 8 workers para processar 16 partes...
-[INFO] Processando parte 1/16
-[INFO] Processando parte 2/16
-[INFO] Processando parte 3/16
-[INFO] Processando parte 4/16
-[INFO] Processando parte 5/16
-[INFO] Processando parte 6/16
-[INFO] Processando parte 7/16
-[INFO] Processando parte 8/16
-[INFO] Processando parte 9/16
-[INFO] Processando parte 10/16
-[INFO] Processando parte 11/16
-[INFO] Processando parte 12/16
-[INFO] Processando parte 13/16
-[INFO] Processando parte 14/16
-[INFO] Processando parte 15/16
-[INFO] Processando parte 16/16
-[INFO] Total de 391 fluxos consolidados de 16 parte(s).
+[INFO] PCAP dividido em 1758 parte(s).
+[INFO] Iniciando ThreadPoolExecutor com 8 workers para processar 1758 partes...
+[INFO] Processando parte 1/1758
+[INFO] Processando parte 2/1758
+...
+[INFO] Processando parte 1758/1758
+[INFO] Total de 63548 fluxos consolidados de 1758 parte(s).
 [INFO] Limpando arquivos temporários do nProbe...
 [INFO] Pesos do modelo carregados com sucesso.
 [INFO] Normalizador carregado com sucesso.
-[INFO] Executando inferência em lote para 391 fluxos extraídos...
+[INFO] Executando inferência em lote para 63548 fluxos extraídos...
 [INFO] Pipeline concluído com sucesso! Resultados salvos em: /app/data/output.csv
 [INFO] Métricas de Classificação
-[INFO] Fluxos rejeitados: 119
-[INFO] Fluxos benignos na Saída 1: 17
-[INFO] Fluxos benignos na Saída 2: 141
-[INFO] Ataques na Saída 1: 16
-[INFO] Ataques na Saída 2: 98
+[INFO] Fluxos rejeitados: 16891
+[INFO] Fluxos benignos na Saída 1: 12
+[INFO] Fluxos benignos na Saída 2: 7846
+[INFO] Ataques na Saída 1: 23043
+[INFO] Ataques na Saída 2: 15756
 ```
 
 O arquivo final `output.csv` estará disponível em `scripts/data/output.csv` no sistema de arquivos local.
