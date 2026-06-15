@@ -358,7 +358,7 @@ def main():
     X_scaled = loaded_scaler.transform(X_df.values)
     X_scaled = np.clip(X_scaled, 0, 1)
 
-    melhores_params = (0.85, 0.85, 0.85, 0.85)
+    melhores_params = (0.95, 0.95, 0.95, 0.90)
     
     logging.info(f"Executando inferência em lote para {len(X_scaled)} fluxos extraídos...")
     resultado = inferencia(
